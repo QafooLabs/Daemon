@@ -25,17 +25,17 @@ abstract class Daemon
     /**
      * @var string
      */
-    private $handle;
+    private $daemonId;
 
     /**
      * @var array
      */
-    private $argv;
+    private $arguments;
 
     /**
      * @var integer
      */
-    private $quietPeriod = 10;
+    private $quietPeriod;
 
     /**
      * @var string
@@ -46,13 +46,6 @@ abstract class Daemon
      * @var string
      */
     private $outputLog = '/dev/null';
-
-    public function __construct(array $argv)
-    {
-        $this->script = realpath($argv[0]);
-        $this->handle = md5(get_class($this));
-        $this->argv = $argv;
-    }
 
     /**
      * Main process method.
@@ -71,11 +64,31 @@ abstract class Daemon
      */
     public function start()
     {
-        if ($this->debug || in_array($this->handle, $this->argv)) {
+        $this->initialize();
+
+        if ($this->debug || in_array($this->daemonId, $this->arguments)) {
             $this->run();
         } else {
             $this->doStart();
         }
+    }
+
+    private function initialize()
+    {
+        if (isset($GLOBALS['argv'])) {
+            $arguments = $GLOBALS['argv'];
+        } elseif (isset($_SERVER['argv'])) {
+            $arguments = $_SERVER['argv'];
+        } else {
+            throw new \ErrorException(
+                'Cannot find $argv. Perhaps daemon not started from CLI?'
+            );
+        }
+
+        $this->setDefaultArguments($arguments);
+        $this->setDefaultDaemonId(md5(get_class($this)));
+        $this->setDefaultQuietPeriod(1);
+        $this->setDefaultScript(realpath($arguments[0]));
     }
 
     /**
@@ -101,7 +114,7 @@ abstract class Daemon
             }
 
             // Change working directory.
-            chdir(dirname($this->argv[0]));
+            chdir(dirname($this->script));
 
             // Close standard I/O descriptors
             fclose(STDIN);
@@ -118,7 +131,7 @@ abstract class Daemon
                     sprintf(
                         '%s %s',
                         escapeshellarg($this->script),
-                        escapeshellarg($this->handle)
+                        escapeshellarg($this->daemonId)
                     )
                 );
                 sleep($this->quietPeriod);
@@ -137,5 +150,53 @@ abstract class Daemon
     public function setErrorLog($errorLog)
     {
         $this->errorLog = $errorLog;
+    }
+
+    public function setScript($script)
+    {
+        $this->script = $script;
+    }
+
+    public function setDaemonId($daemonId)
+    {
+        $this->daemonId = $daemonId;
+    }
+
+    public function setArguments(array $arguments)
+    {
+        $this->arguments = $arguments;
+    }
+
+    public function setQuietPeriod($seconds)
+    {
+        $this->quietPeriod = $seconds;
+    }
+
+    private function setDefaultScript($script)
+    {
+        if (null === $this->script) {
+            $this->script = $script;
+        }
+    }
+
+    private function setDefaultDaemonId($daemonId)
+    {
+        if (null === $this->daemonId) {
+            $this->daemonId = $daemonId;
+        }
+    }
+
+    private function setDefaultArguments(array $arguments)
+    {
+        if (null === $this->arguments) {
+            $this->arguments = $arguments;
+        }
+    }
+
+    private function setDefaultQuietPeriod($seconds)
+    {
+        if (null === $this->quietPeriod) {
+            $this->quietPeriod = $seconds;
+        }
     }
 }
