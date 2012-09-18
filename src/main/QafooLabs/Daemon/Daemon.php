@@ -38,6 +38,11 @@ abstract class Daemon
     private $quietPeriod;
 
     /**
+     * @var integer
+     */
+    private $rampUpTime;
+
+    /**
      * @var string
      */
     private $errorLog = '/dev/null';
@@ -89,6 +94,7 @@ abstract class Daemon
         $this->setDefaultDaemonId(md5(get_class($this)));
         $this->setDefaultQuietPeriod(1);
         $this->setDefaultScript(realpath($arguments[0]));
+        $this->setDefaultRampUpTime(30);
     }
 
     /**
@@ -125,6 +131,8 @@ abstract class Daemon
             $STDIN  = fopen('/dev/null', 'r'); // STDIN
             $STDOUT = fopen($this->outputLog, 'a'); // STDOUT
             $STDERR = fopen($this->errorLog, 'a'); // STDERR
+
+            $this->waitRampUpTime();
 
             while (true) {
                 passthru(
@@ -172,6 +180,11 @@ abstract class Daemon
         $this->quietPeriod = $seconds;
     }
 
+    public function setRampUpTime($seconds)
+    {
+        $this->rampUpTime = $seconds;
+    }
+
     private function setDefaultScript($script)
     {
         if (null === $this->script) {
@@ -198,5 +211,26 @@ abstract class Daemon
         if (null === $this->quietPeriod) {
             $this->quietPeriod = $seconds;
         }
+    }
+
+    private function setDefaultRampUpTime($seconds)
+    {
+        if (null === $this->rampUpTime) {
+            $this->rampUpTime = $seconds;
+        }
+    }
+
+    private function waitRampUpTime()
+    {
+        if (null === $this->rampUpTime) {
+            return;
+        }
+
+        echo "Waiting {$this->rampUpTime} seconds before start:", PHP_EOL, PHP_EOL;
+        for ($i = 0; $i < $this->rampUpTime; ++$i) {
+            echo '.';
+            sleep(1);
+        }
+        echo PHP_EOL;
     }
 }
