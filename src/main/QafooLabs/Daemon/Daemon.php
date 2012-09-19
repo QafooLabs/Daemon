@@ -94,7 +94,7 @@ abstract class Daemon
         $this->setDefaultDaemonId(md5(get_class($this)));
         $this->setDefaultQuietPeriod(1);
         $this->setDefaultScript(realpath($arguments[0]));
-        $this->setDefaultRampUpTime(30);
+        $this->setDefaultRampUpTime(0);
     }
 
     /**
