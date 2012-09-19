@@ -73,6 +73,8 @@ abstract class Daemon
 
         if ($this->debug || in_array($this->daemonId, $this->arguments)) {
             $this->run();
+            
+            sleep($this->quietPeriod);
         } else {
             $this->doStart();
         }
@@ -142,7 +144,6 @@ abstract class Daemon
                         escapeshellarg($this->daemonId)
                     )
                 );
-                sleep($this->quietPeriod);
             }
 
             closelog();
