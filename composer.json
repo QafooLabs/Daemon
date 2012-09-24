@@ -1,7 +1,7 @@
 {
     "name": "qafoolabs/daemon",
     "description": "Library to implement background daemons in PHP",
-    "version": "0.6.3",
+    "version": "0.6.4",
     "type": "library",
     "minimum-stability": "stable",
     "authors": [

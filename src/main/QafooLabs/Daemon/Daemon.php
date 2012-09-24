@@ -73,7 +73,7 @@ abstract class Daemon
 
         if ($this->debug || in_array($this->daemonId, $this->arguments)) {
             $this->run();
-            
+
             sleep($this->quietPeriod);
         } else {
             $this->doStart();
@@ -227,11 +227,6 @@ abstract class Daemon
             return;
         }
 
-        echo "Waiting {$this->rampUpTime} seconds before start:", PHP_EOL, PHP_EOL;
-        for ($i = 0; $i < $this->rampUpTime; ++$i) {
-            echo '.';
-            sleep(1);
-        }
-        echo PHP_EOL;
+        sleep($this->rampUpTime);
     }
 }
