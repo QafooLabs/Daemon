@@ -186,6 +186,11 @@ abstract class Daemon
         $this->rampUpTime = $seconds;
     }
 
+    public function setDebug($debug)
+    {
+        $this->debug = $debug;
+    }
+
     private function setDefaultScript($script)
     {
         if (null === $this->script) {
