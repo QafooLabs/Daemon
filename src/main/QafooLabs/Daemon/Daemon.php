@@ -23,11 +23,6 @@ abstract class Daemon
     private $script;
 
     /**
-     * @var string
-     */
-    private $daemonId;
-
-    /**
      * @var array
      */
     private $arguments;
@@ -71,7 +66,7 @@ abstract class Daemon
     {
         $this->initialize();
 
-        if ($this->debug || in_array($this->daemonId, $this->arguments)) {
+        if ($this->debug || in_array('--spawn', $this->arguments)) {
             $this->run();
 
             sleep($this->quietPeriod);
@@ -93,7 +88,6 @@ abstract class Daemon
         }
 
         $this->setDefaultArguments($arguments);
-        $this->setDefaultDaemonId(md5(get_class($this)));
         $this->setDefaultQuietPeriod(1);
         $this->setDefaultScript(realpath($arguments[0]));
         $this->setDefaultRampUpTime(0);
@@ -137,13 +131,7 @@ abstract class Daemon
             $this->waitRampUpTime();
 
             while (true) {
-                passthru(
-                    sprintf(
-                        '%s %s',
-                        escapeshellarg($this->script),
-                        escapeshellarg($this->daemonId)
-                    )
-                );
+                passthru(sprintf('%s --spawn', escapeshellarg($this->script)));
             }
 
             closelog();
@@ -166,9 +154,17 @@ abstract class Daemon
         $this->script = $script;
     }
 
+    /**
+     * Sets the daemon identifier used to identify a spawned process.
+     *
+     * @param string $daemonId
+     * @return void
+     * @deprecated The identifier isn't used anymore for detecting a
+     *             spawned process, instead we now use the --spawn
+     *             cli option.
+     */
     public function setDaemonId($daemonId)
     {
-        $this->daemonId = $daemonId;
     }
 
     public function setArguments(array $arguments)
@@ -195,13 +191,6 @@ abstract class Daemon
     {
         if (null === $this->script) {
             $this->script = $script;
-        }
-    }
-
-    private function setDefaultDaemonId($daemonId)
-    {
-        if (null === $this->daemonId) {
-            $this->daemonId = $daemonId;
         }
     }
 
