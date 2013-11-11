@@ -48,6 +48,11 @@ abstract class Daemon
     private $outputLog = '/dev/null';
 
     /**
+     * @var \QafooLabs\Daemon\Constraint[]
+     */
+    private $contraints = array();
+
+    /**
      * Main process method.
      *
      * Implement this method in your concrete daemon with the logic that should
@@ -65,6 +70,7 @@ abstract class Daemon
     public function start()
     {
         $this->initialize();
+        $this->checkConstraints();
 
         if ($this->debug || in_array('--spawn', $this->arguments)) {
             $this->run();
@@ -72,6 +78,19 @@ abstract class Daemon
             sleep($this->quietPeriod);
         } else {
             $this->doStart();
+        }
+    }
+
+    /**
+     * Tests if all constraints for the concrete daemon are fulfilled.
+     *
+     * @return void
+     * @throws \ErrorException If one of the defined daemon constraints is not fulfilled.
+     */
+    private function checkConstraints()
+    {
+        foreach ($this->contraints as $constraint) {
+            $constraint->check($this);
         }
     }
 
@@ -185,6 +204,15 @@ abstract class Daemon
     public function setDebug($debug)
     {
         $this->debug = $debug;
+    }
+
+    /**
+     * @param \QafooLabs\Daemon\Constraint $constraint
+     * @return void
+     */
+    public function addConstraint(Constraint $constraint)
+    {
+        $this->contraints[] = $constraint;
     }
 
     private function setDefaultScript($script)
