@@ -2,22 +2,10 @@
     "name": "qafoolabs/daemon",
     "description": "Library to implement background daemons in PHP",
     "version": "1.2.0",
+    "license": "MIT",
     "type": "library",
     "minimum-stability": "stable",
     "authors": [
-        {
-            "name": "Tobias Schlitt",
-            "email": "toby@qafoo.com"
-        },
-
-        {
-            "name": "Kore Nordmann",
-            "email": "kore@qafoo.com"
-        },
-        {
-            "name": "Jakob Westhoff",
-            "email": "jakob@qafoo.com"
-        },
         {
             "name": "Manuel Pichler",
             "email": "manuel@qafoo.com"
