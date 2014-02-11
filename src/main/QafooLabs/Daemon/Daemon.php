@@ -38,6 +38,13 @@ abstract class Daemon
     private $rampUpTime;
 
     /**
+     * Maximum number of parallel daemon processes.
+     *
+     * @var integer
+     */
+    private $maxParallel;
+
+    /**
      * @var string
      */
     private $errorLog = '/dev/null';
@@ -61,6 +68,20 @@ abstract class Daemon
      * @return void
      */
     abstract protected function run();
+
+    /**
+     * This method can be used to provide additional payload data from the
+     * angle processes to the forked worker processes.
+     *
+     * This method should be overwritten if a concrete daemon requires unique
+     * payload within it's sub processes.
+     *
+     * @return mixed
+     */
+    protected function generatePayload()
+    {
+        return null;
+    }
 
     /**
      * Starts a new background process for the concrete daemon implementation.
@@ -110,6 +131,7 @@ abstract class Daemon
         $this->setDefaultQuietPeriod(1);
         $this->setDefaultScript(realpath($arguments[0]));
         $this->setDefaultRampUpTime(0);
+        $this->setDefaultMaxParallel(1);
     }
 
     /**
@@ -149,12 +171,54 @@ abstract class Daemon
 
             $this->waitRampUpTime();
 
-            while (true) {
-                passthru(sprintf('%s --spawn', escapeshellarg($this->script)));
-            }
+            $this->runAngleLoop();
 
             closelog();
             exit(0);
+        }
+    }
+
+    private function runAngleLoop()
+    {
+        $parallel = $this->maxParallel;
+        $forks = array();
+
+        while (true) {
+
+            while (count($forks) < $parallel) {
+
+                $payload = serialize($this->generatePayload());
+
+                $pid = pcntl_fork();
+
+                if (0 === $pid) {
+                    passthru(
+                        sprintf(
+                            '%s --spawn --payload %s',
+                            escapeshellarg($this->script),
+                            escapeshellarg($payload)
+                        ),
+                        $exitCode
+                    );
+
+                    exit($exitCode);
+                } else {
+                    $forks[$pid] = $payload;
+                }
+            }
+
+            do {
+                // Check if the registered jobs are still alive
+                if ($pid = pcntl_wait($status)) {
+
+                    if ($status === 0) {
+                        $parallel = $this->maxParallel;
+                    } else if ($parallel > 1) {
+                        $parallel = $parallel - 1;
+                    }
+                    unset($forks[$pid]);
+                }
+            } while (count($forks) >= $parallel);
         }
     }
 
@@ -201,6 +265,11 @@ abstract class Daemon
         $this->rampUpTime = $seconds;
     }
 
+    public function setMaxParallel($maxParallel)
+    {
+        $this->maxParallel = $maxParallel;
+    }
+
     public function setDebug($debug)
     {
         $this->debug = $debug;
@@ -240,6 +309,13 @@ abstract class Daemon
     {
         if (null === $this->rampUpTime) {
             $this->rampUpTime = $seconds;
+        }
+    }
+
+    public function setDefaultMaxParallel($maxParallel)
+    {
+        if (null === $this->maxParallel) {
+            $this->maxParallel = $maxParallel;
         }
     }
 
