@@ -13,14 +13,10 @@ namespace QafooLabs\Daemon;
 abstract class Daemon
 {
     /**
-     * @var boolean
+     * This exit code from a spawned process indicates that the spawned processes
+     * has done some work.
      */
-    private $debug = false;
-
-    /**
-     * @var string
-     */
-    private $script;
+    const WORK_DONE_EXIT_CODE = 42;
 
     /**
      * @var array
@@ -28,12 +24,12 @@ abstract class Daemon
     private $arguments;
 
     /**
-     * @var integer
+     * @var float
      */
     private $quietPeriod;
 
     /**
-     * @var integer
+     * @var float
      */
     private $rampUpTime;
 
@@ -57,31 +53,18 @@ abstract class Daemon
     /**
      * @var \QafooLabs\Daemon\Constraint[]
      */
-    private $contraints = array();
+    private $constraints = array();
 
     /**
      * Main process method.
      *
      * Implement this method in your concrete daemon with the logic that should
-     * run in background.
+     * run in background. This method should return <b>TRUE</b> if the spawned
+     * process has done some work, otherwise return <b>FALSE</b>.
      *
-     * @return void
+     * @return boolean
      */
     abstract protected function run();
-
-    /**
-     * This method can be used to provide additional payload data from the
-     * angle processes to the forked worker processes.
-     *
-     * This method should be overwritten if a concrete daemon requires unique
-     * payload within it's sub processes.
-     *
-     * @return mixed
-     */
-    protected function generatePayload()
-    {
-        return null;
-    }
 
     /**
      * Starts a new background process for the concrete daemon implementation.
@@ -93,10 +76,8 @@ abstract class Daemon
         $this->initialize();
         $this->checkConstraints();
 
-        if ($this->debug || in_array('--spawn', $this->arguments)) {
+        if (in_array('--spawn', $this->arguments)) {
             $this->run();
-
-            sleep($this->quietPeriod);
         } else {
             $this->doStart();
         }
@@ -110,11 +91,18 @@ abstract class Daemon
      */
     private function checkConstraints()
     {
-        foreach ($this->contraints as $constraint) {
+        foreach ($this->constraints as $constraint) {
             $constraint->check($this);
         }
     }
 
+    /**
+     * Initializes the daemon with default values for quiet period, ramp-up time,
+     * number of parallel processes etc.
+     *
+     * @return void
+     * @throws \ErrorException
+     */
     private function initialize()
     {
         if (isset($GLOBALS['argv'])) {
@@ -129,13 +117,17 @@ abstract class Daemon
 
         $this->setDefaultArguments($arguments);
         $this->setDefaultQuietPeriod(1);
-        $this->setDefaultScript(realpath($arguments[0]));
         $this->setDefaultRampUpTime(0);
         $this->setDefaultMaxParallel(1);
     }
 
     /**
+     * Starts the main daemon process.
      *
+     * This method detaches the daemon process from the current shell session
+     * and spawns the daemon into the background.
+     *
+     * @return void
      */
     private function doStart()
     {
@@ -156,29 +148,34 @@ abstract class Daemon
                 exit(1);
             }
 
-            // Change working directory.
-            chdir(dirname($this->script));
-
             // Close standard I/O descriptors
             fclose(STDIN);
             fclose(STDOUT);
             fclose(STDERR);
 
             // Initialize new standard I/O descriptors
-            $STDIN  = fopen('/dev/null', 'r'); // STDIN
-            $STDOUT = fopen($this->outputLog, 'a'); // STDOUT
-            $STDERR = fopen($this->errorLog, 'a'); // STDERR
+            fopen('/dev/null', 'r'); // STDIN
+            fopen($this->outputLog, 'a'); // STDOUT
+            fopen($this->errorLog, 'a'); // STDERR
 
             $this->waitRampUpTime();
 
-            $this->runAngleLoop();
+            $this->doStartLoop();
 
             closelog();
             exit(0);
         }
     }
 
-    private function runAngleLoop()
+    /**
+     * Starts the daemon endless loop.
+     *
+     * Within this method we start an endless loop which then spawns the worker
+     * processes.
+     *
+     * @return void
+     */
+    private function doStartLoop()
     {
         $parallel = $this->maxParallel;
         $forks = array();
@@ -187,23 +184,16 @@ abstract class Daemon
 
             while (count($forks) < $parallel) {
 
-                $payload = serialize($this->generatePayload());
-
                 $pid = pcntl_fork();
 
                 if (0 === $pid) {
-                    passthru(
-                        sprintf(
-                            '%s --spawn --payload %s',
-                            escapeshellarg($this->script),
-                            escapeshellarg($payload)
-                        ),
-                        $exitCode
-                    );
+                    $exitCode = $this->run();
 
-                    exit($exitCode);
+                    usleep($this->quietPeriod * 1000000);
+
+                    exit($exitCode === true ? self::WORK_DONE_EXIT_CODE : 0);
                 } else {
-                    $forks[$pid] = $payload;
+                    $forks[$pid] = $pid;
                 }
             }
 
@@ -211,7 +201,7 @@ abstract class Daemon
                 // Check if the registered jobs are still alive
                 if ($pid = pcntl_wait($status)) {
 
-                    if ($status === 0) {
+                    if (self::WORK_DONE_EXIT_CODE === pcntl_wexitstatus($status)) {
                         $parallel = $this->maxParallel;
                     } else if ($parallel > 1) {
                         $parallel = $parallel - 1;
@@ -232,65 +222,80 @@ abstract class Daemon
         $this->errorLog = $errorLog;
     }
 
-    public function setScript($script)
-    {
-        $this->script = $script;
-    }
-
-    /**
-     * Sets the daemon identifier used to identify a spawned process.
-     *
-     * @param string $daemonId
-     * @return void
-     * @deprecated The identifier isn't used anymore for detecting a
-     *             spawned process, instead we now use the --spawn
-     *             cli option.
-     */
-    public function setDaemonId($daemonId)
-    {
-    }
-
     public function setArguments(array $arguments)
     {
         $this->arguments = $arguments;
     }
 
+    /**
+     * Sets the quiet period between to worker runs.
+     *
+     * Each worker process will wait <b>$seconds</b> after it has done it's job.
+     * The quiet period will be used to reduce the busy waiting load on the
+     * server.
+     *
+     * @param float $seconds
+     * @return void
+     */
     public function setQuietPeriod($seconds)
     {
         $this->quietPeriod = $seconds;
     }
 
+    /**
+     * Sets the ramp-up time for the daemon.
+     *
+     * When the daemon get's started it wait <b>$seconds</b> before it spawns
+     * the first worker sub process.
+     *
+     * @param float $seconds
+     * @return void
+     */
     public function setRampUpTime($seconds)
     {
         $this->rampUpTime = $seconds;
     }
 
+    /**
+     * Sets the maximum number of parallel processes.
+     *
+     * The daemon will spawn up to <b>$maxParallel</b> child processes when
+     * enough workload is present.
+     *
+     * @param integer $maxParallel
+     * @return void
+     */
     public function setMaxParallel($maxParallel)
     {
         $this->maxParallel = $maxParallel;
     }
 
-    public function setDebug($debug)
-    {
-        $this->debug = $debug;
-    }
-
     /**
+     * Adds a additional execution constraint.
+     *
+     * The daemon component uses constraints to determine if a concrete daemon
+     * should run on the current machine, in the current environment etc. There
+     * are no default constraints and it's up to the user of this component to
+     * implement custom constrains.
+     *
      * @param \QafooLabs\Daemon\Constraint $constraint
      * @return void
      */
     public function addConstraint(Constraint $constraint)
     {
-        $this->contraints[] = $constraint;
+        $this->constraints[] = $constraint;
     }
 
-    private function setDefaultScript($script)
-    {
-        if (null === $this->script) {
-            $this->script = $script;
-        }
-    }
-
+    /**
+     * Sets the default execution arguments.
+     *
+     * Normally the arguments will be similar <b>$_SERVER['argv']</b>. When a
+     * custom daemon implementation has already configured the arguments a call
+     * to this method will not overwrite the existing value.
+     *
+     * @param array $arguments
+     * @return void
+     */
     private function setDefaultArguments(array $arguments)
     {
         if (null === $this->arguments) {
@@ -312,19 +317,43 @@ abstract class Daemon
         }
     }
 
-    public function setDefaultMaxParallel($maxParallel)
+    /**
+     * Sets the default value for the maximum number of parallel processes.
+     *
+     * When a custom daemon implementation has already configured the maximum
+     * number of parallel processes this method will not overwrite the existing
+     * value.
+     *
+     * @param integer $maxParallel
+     * @return void
+     */
+    private function setDefaultMaxParallel($maxParallel)
     {
         if (null === $this->maxParallel) {
             $this->maxParallel = $maxParallel;
         }
     }
 
+    /**
+     * Waits the configured ramp-up time when the daemon get's started.
+     *
+     * @return void
+     */
     private function waitRampUpTime()
     {
         if (null === $this->rampUpTime) {
             return;
         }
 
-        sleep($this->rampUpTime);
+        usleep($this->rampUpTime * 1000000);
+    }
+
+    /**
+     * @param boolean $debug
+     * @return void
+     * @deprecated
+     */
+    public function setDebug($debug)
+    {
     }
 }
