@@ -154,9 +154,9 @@ abstract class Daemon
             fclose(STDERR);
 
             // Initialize new standard I/O descriptors
-            fopen('/dev/null', 'r'); // STDIN
-            fopen($this->outputLog, 'a'); // STDOUT
-            fopen($this->errorLog, 'a'); // STDERR
+            $STDIN  = fopen('/dev/null', 'r'); // STDIN
+            $STDOUT = fopen($this->outputLog, 'a'); // STDOUT
+            $STDERR = fopen($this->errorLog, 'a'); // STDERR
 
             $this->waitRampUpTime();
 
